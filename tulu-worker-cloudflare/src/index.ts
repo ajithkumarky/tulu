@@ -146,9 +146,10 @@ async function ensureUserColumns(db: D1Database): Promise<void> {
 
 	for (const sql of columns) {
 		try {
-			await db.exec(sql);
+			await db.prepare(sql).run();
 		} catch (e: any) {
-			if (e.message && e.message.includes('duplicate column')) {
+			const msg = String(e?.message || e || '').toLowerCase();
+			if (msg.includes('duplicate') || msg.includes('already exists')) {
 				// Column already exists, safe to ignore
 			} else {
 				throw e;
@@ -418,7 +419,7 @@ export default {
 			// --- Game: Answer ---
 			if (url.pathname === '/api/game/answer' && request.method === 'POST') {
 				try {
-					const { questionId, selectedAnswer, questionType } = await request.json() as { questionId: number; selectedAnswer: string; questionType: string };
+					const { questionId, selectedAnswer, questionType, comboMultiplier } = await request.json() as { questionId: number; selectedAnswer: string; questionType: string; comboMultiplier?: number };
 
 					const correctVocab = await env.DB.prepare(
 						"SELECT english_translation FROM vocabulary WHERE id = ?"
@@ -433,8 +434,10 @@ export default {
 					let experienceGain = 0;
 					let currencyGain = 0;
 					if (isCorrect) {
-						experienceGain = 10;
-						currencyGain = 5;
+						// Apply combo multiplier (capped at 3x server-side)
+						const mult = Math.min(Math.max(comboMultiplier || 1, 1), 3);
+						experienceGain = Math.round(10 * mult);
+						currencyGain = Math.round(5 * mult);
 					}
 
 					let userStats = { level: 1, experience: 0, currency: 0 };
@@ -468,7 +471,7 @@ export default {
 			// --- Game: Fifty-Fifty ---
 			if (url.pathname === '/api/game/fifty-fifty' && request.method === 'POST') {
 				try {
-					const { questionId } = await request.json() as { questionId: number };
+					const { questionId, currentOptions } = await request.json() as { questionId: number; currentOptions: string[] };
 
 					const correctVocab = await env.DB.prepare(
 						"SELECT english_translation FROM vocabulary WHERE id = ?"
@@ -478,23 +481,17 @@ export default {
 						return new Response(JSON.stringify({ error: "Invalid question ID" }), { status: 400, headers: apiHeaders });
 					}
 
-					// Get one random incorrect option
-					const countResult = await env.DB.prepare("SELECT COUNT(*) as count FROM vocabulary").first<{ count: number }>();
-					const totalVocabulary = countResult ? countResult.count : 0;
+					// Pick one random incorrect from the question's actual options
+					const incorrectFromOptions = (currentOptions || []).filter(
+						(o: string) => o !== correctVocab.english_translation
+					);
+					const randomIncorrect = incorrectFromOptions[Math.floor(Math.random() * incorrectFromOptions.length)];
 
-					let incorrectOption: string | null = null;
-					while (!incorrectOption) {
-						const randomOffset = Math.floor(Math.random() * totalVocabulary);
-						const vocab = await env.DB.prepare(
-							"SELECT english_translation FROM vocabulary LIMIT 1 OFFSET ?"
-						).bind(randomOffset).first<{ english_translation: string }>();
-
-						if (vocab && vocab.english_translation !== correctVocab.english_translation) {
-							incorrectOption = vocab.english_translation;
-						}
+					if (!randomIncorrect) {
+						return new Response(JSON.stringify({ error: "Cannot reduce options" }), { status: 400, headers: apiHeaders });
 					}
 
-					const options = [correctVocab.english_translation, incorrectOption].sort(() => Math.random() - 0.5);
+					const options = [correctVocab.english_translation, randomIncorrect].sort(() => Math.random() - 0.5);
 
 					return Response.json({ options }, { headers: apiHeaders });
 

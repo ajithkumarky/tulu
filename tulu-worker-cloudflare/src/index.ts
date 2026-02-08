@@ -501,6 +501,22 @@ export default {
 				}
 			}
 
+			// --- Game: Death Reset ---
+			if (url.pathname === '/api/game/reset' && request.method === 'POST') {
+				try {
+					const username = await getUsernameFromRequest(request, env.AUTH_SECRET);
+					if (!username) {
+						return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: apiHeaders });
+					}
+					await ensureUserColumns(env.DB);
+					await env.DB.prepare("UPDATE users SET level = 1, experience = 0, currency = 0 WHERE username = ?").bind(username).run();
+					return Response.json({ message: "Stats reset", userStats: { level: 1, experience: 0, currency: 0 } }, { headers: apiHeaders });
+				} catch (error) {
+					console.error("Error resetting stats:", error);
+					return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: apiHeaders });
+				}
+			}
+
 			return new Response(JSON.stringify({ error: 'API Not Found' }), { status: 404, headers: apiHeaders });
 		}
 

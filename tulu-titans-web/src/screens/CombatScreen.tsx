@@ -132,8 +132,10 @@ const CombatScreen = () => {
   const [showDodgeText, setShowDodgeText] = useState(false);
   // Critical hit
   const [showCritText, setShowCritText] = useState(false);
+  const [imageRevealed, setImageRevealed] = useState(false);
 
   const monsterHealthRef = useRef(0);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -163,6 +165,7 @@ const CombatScreen = () => {
     setFiftyFiftyUsed(false);
     setShowDodgeText(false);
     setShowCritText(false);
+    setImageRevealed(false);
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -357,12 +360,14 @@ const CombatScreen = () => {
           setPowerUpCharger(prev => prev + 1);
           setHeavyAttackCharge(prev => prev + 1);
           setShowAnswerImage(true);
+          setTimeout(() => feedbackRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
         } else {
           // Reset combo on wrong answer
           setComboStreak(0);
 
           setFeedback(`Incorrect. The correct answer was: ${result.correctAnswer}`);
           setShowAnswerImage(true);
+          setTimeout(() => feedbackRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
 
           // Dodge mechanic
           let damage = currentEnemy.attack;
@@ -378,18 +383,25 @@ const CombatScreen = () => {
           setHealthLost(damage);
 
           if (newHealth <= 0) {
+            // Reset stats on server
+            const resetToken = localStorage.getItem('token');
+            fetch('/api/game/reset', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resetToken}` } as HeadersInit,
+            }).catch(() => {});
+
             setTimeout(() => {
               setHealthLost(null);
               setHeroAnimation('');
-              alert("Game Over! You were defeated by the monster.");
+              alert("Game Over! You were defeated. Your rank has been reset.");
               setHeroHealth(INITIAL_HEALTH);
               setComboStreak(0);
               setHeavyAttackCharge(0);
               setPowerUpCharger(0);
-              spawnScaledEnemy(result.userStats.level);
-              navigate('/');
+              setUserStats({ level: 1, experience: 0, currency: 0 });
+              spawnScaledEnemy(1);
+              fetchQuestion();
             }, 2000);
-            setUserStats(result.userStats);
             return;
           }
 
@@ -495,32 +507,45 @@ const CombatScreen = () => {
         </OptionsList>
         {!answeredCorrectly && (
           <SubmitButton onClick={handleAnswerSubmit} disabled={!selectedAnswer}>
-            Unleash Answer
+            <ButtonIcon>&#9876;</ButtonIcon> Unleash Answer
           </SubmitButton>
         )}
         {answeredCorrectly && (
           <AttackOptions>
             <AttackButton onClick={() => handleAttack('quick')} disabled={attackPending}>
-              Quick Strike (15)
+              <ButtonIcon>&#9889;</ButtonIcon> Quick Strike
+              <DamageLabel>15 dmg</DamageLabel>
             </AttackButton>
             <HeavyAttackButton
               onClick={() => handleAttack('heavy')}
               disabled={attackPending || heavyAttackCharge < HEAVY_ATTACK_CHARGE_THRESHOLD}
             >
+              <ButtonIcon>{heavyAttackCharge >= HEAVY_ATTACK_CHARGE_THRESHOLD ? '\u{1F525}' : '\u{1F5E1}'}</ButtonIcon>
+              {' '}Titan Smash
               {heavyAttackCharge >= HEAVY_ATTACK_CHARGE_THRESHOLD
-                ? 'Titan Smash! (50)'
-                : `Titan Smash (${heavyAttackCharge}/${HEAVY_ATTACK_CHARGE_THRESHOLD})`}
+                ? <DamageLabel>50 dmg</DamageLabel>
+                : <ChargeBar><ChargeFill $progress={heavyAttackCharge / HEAVY_ATTACK_CHARGE_THRESHOLD} /><ChargeText>{heavyAttackCharge}/{HEAVY_ATTACK_CHARGE_THRESHOLD}</ChargeText></ChargeBar>
+              }
             </HeavyAttackButton>
           </AttackOptions>
         )}
+        <div ref={feedbackRef}>
         {feedback && <FeedbackText>{feedback}</FeedbackText>}
         {showAnswerImage && question?.image_name && (
-          <QuestionImage
-            src={`/images/${question.image_name}`}
-            alt="Question visual aid"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
+          <ImagePane>
+            <ImageToggle onClick={() => setImageRevealed(prev => !prev)}>
+              {imageRevealed ? 'Hide Image' : 'View Image'} 🖼
+            </ImageToggle>
+            {imageRevealed && (
+              <QuestionImage
+                src={`/images/${question.image_name}`}
+                alt="Question visual aid"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
+          </ImagePane>
         )}
+        </div>
       </QuestionCard>
     </CombatContainer>
   );
@@ -532,7 +557,7 @@ const CombatContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px;
+  padding: 12px 20px;
   background-image: url('/images/background.jpeg');
   background-size: cover;
   background-position: center;
@@ -544,8 +569,8 @@ const CombatContainer = styled.div`
 const Header = styled.h1`
   font-family: 'Cinzel Decorative', cursive;
   color: #ffd700;
-  margin-bottom: 20px;
-  font-size: 3em;
+  margin-bottom: 8px;
+  font-size: 2.2em;
   text-transform: uppercase;
   letter-spacing: 3px;
 `;
@@ -559,17 +584,17 @@ const UserStatsContainer = styled.div`
   width: 85%;
   margin-bottom: 10px;
   padding: 12px 20px;
-  background-color: rgba(0, 0, 0, 0.7);
+  background: linear-gradient(180deg, rgba(20, 10, 5, 0.85), rgba(40, 20, 10, 0.8));
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-  border: 1px solid #c0c0c0;
+  border: 1px solid rgba(255, 215, 0, 0.3);
 `;
 
 const StatItem = styled.span`
   font-family: 'Verdana', sans-serif;
   font-size: 1.1em;
   font-weight: bold;
-  color: #f0f8ff;
+  color: #ffd700;
 `;
 
 const FiftyFiftyPill = styled.button`
@@ -643,26 +668,27 @@ const CombatArea = styled.div`
   justify-content: space-around;
   align-items: center;
   width: 90%;
-  margin-bottom: 30px;
-  min-height: 200px;
+  margin-bottom: 15px;
+  min-height: 170px;
 `;
 
 const CharacterContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 10px;
-  border-radius: 10px;
+  background: radial-gradient(ellipse at center, rgba(255, 215, 0, 0.08), rgba(0, 0, 0, 0.4));
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 215, 0, 0.15);
   position: relative;
 `;
 
 const Character = styled.img`
-  width: 180px;
-  height: 180px;
+  width: 140px;
+  height: 140px;
   object-fit: cover;
   border-radius: 10px;
-  border: 5px solid #ffd700;
+  border: 4px solid #ffd700;
   box-shadow: 0 0 20px rgba(255, 215, 0, 0.7);
 
   &.shake {
@@ -677,11 +703,11 @@ const Character = styled.img`
 `;
 
 const CharacterDying = styled.img`
-  width: 180px;
-  height: 180px;
+  width: 140px;
+  height: 140px;
   object-fit: cover;
   border-radius: 10px;
-  border: 5px solid #ffd700;
+  border: 4px solid #ffd700;
   animation: ${monsterDeath} 1.5s ease-in forwards;
 `;
 
@@ -739,47 +765,63 @@ const VictoryText = styled.p`
 
 const VsText = styled.span`
   font-family: 'Cinzel Decorative', cursive;
-  font-size: 4em;
+  font-size: 3em;
   font-weight: bold;
-  color: #8b0000;
-  margin: 0 30px;
-  text-shadow: 3px 3px 5px rgba(0, 0, 0, 0.9);
+  color: #ffd700;
+  margin: 0 20px;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.5), 3px 3px 5px rgba(0, 0, 0, 0.9);
 `;
 
 const HealthBar = styled.progress`
-  width: 120px;
-  height: 25px;
-  margin-top: 15px;
-  border-radius: 5px;
-  border: 1px solid #333;
-  &::-webkit-progress-bar { background-color: #555; border-radius: 5px; }
-  &::-webkit-progress-value { background-color: #3cb371; border-radius: 5px; }
+  width: 140px;
+  height: 20px;
+  margin-top: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  &::-webkit-progress-bar { background-color: rgba(0, 0, 0, 0.6); border-radius: 10px; }
+  &::-webkit-progress-value { background: linear-gradient(90deg, #3cb371, #2ecc71); border-radius: 10px; }
 `;
 
 const QuestionCard = styled.div`
-  background-color: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(180deg, rgba(15, 10, 5, 0.9), rgba(30, 15, 8, 0.88));
   border-radius: 20px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
-  padding: 30px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 215, 0, 0.1);
+  padding: 20px 25px;
   width: 70%;
   max-width: 700px;
   text-align: center;
-  color: #333;
-  border: 3px solid #a0522d;
+  color: #e8d5b5;
+  border: 2px solid rgba(255, 215, 0, 0.3);
 `;
 
 const QuestionText = styled.h2`
   font-family: 'Georgia', serif;
-  color: #2f4f4f;
-  margin-bottom: 20px;
-  font-size: 1.8em;
+  color: #ffd700;
+  margin-bottom: 12px;
+  font-size: 1.5em;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.3), 1px 1px 3px rgba(0, 0, 0, 0.8);
 `;
 
 const OptionsList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 8px;
+  margin-bottom: 15px;
+`;
+
+const shimmer = keyframes`
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+`;
+
+const pulseGlow = keyframes`
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(255, 215, 0, 0.8), 0 0 50px rgba(255, 100, 0, 0.3); }
+`;
+
+const readyPulse = keyframes`
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.4), inset 0 0 10px rgba(255, 215, 0, 0.1); border-color: #ffd700; }
+  50% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.9), 0 0 60px rgba(255, 100, 0, 0.4), inset 0 0 20px rgba(255, 215, 0, 0.2); border-color: #fff; }
 `;
 
 const AttackOptions = styled.div`
@@ -791,50 +833,143 @@ const AttackOptions = styled.div`
 `;
 
 const AttackButton = styled.button`
-  background-color: #dc143c;
+  background: linear-gradient(135deg, #dc143c 0%, #ff4444 50%, #dc143c 100%);
+  background-size: 200% 100%;
   color: #fff;
   border: 2px solid #8b0000;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 14px 28px;
   font-family: 'Cinzel Decorative', cursive;
   font-size: 1.1em;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-width: 160px;
+  min-width: 170px;
+  position: relative;
+  overflow: hidden;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 15px rgba(220, 20, 60, 0.4);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: ${shimmer} 3s ease-in-out infinite;
+  }
 
   &:hover:not(:disabled) {
-    background-color: #b22222;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    background-position: 100% center;
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 6px 20px rgba(220, 20, 60, 0.6);
+    border-color: #ff4444;
   }
-  &:disabled { cursor: not-allowed; opacity: 0.6; }
+
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+    box-shadow: 0 2px 8px rgba(220, 20, 60, 0.4);
+  }
+
+  &:disabled { cursor: not-allowed; opacity: 0.5; filter: grayscale(0.5); }
 `;
 
-const HeavyAttackButton = styled.button`
-  background: linear-gradient(135deg, #8b0000, #4a0000);
+const HeavyAttackButton = styled.button<{ disabled: boolean }>`
+  background: linear-gradient(135deg, #8b0000, #cc0000, #8b0000);
+  background-size: 200% 100%;
   color: #ffd700;
-  border: 2px solid #ffd700;
-  border-radius: 10px;
+  border: 3px solid #ffd700;
+  border-radius: 12px;
   padding: 14px 28px;
   font-family: 'Cinzel Decorative', cursive;
   font-size: 1.1em;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-width: 160px;
+  min-width: 170px;
+  position: relative;
+  overflow: hidden;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.6), 1px 1px 2px rgba(0, 0, 0, 0.8);
+
+  ${props => !props.disabled && css`
+    animation: ${readyPulse} 2s ease-in-out infinite;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.3), transparent);
+      animation: ${shimmer} 2s ease-in-out infinite;
+    }
+  `}
 
   &:hover:not(:disabled) {
-    background: linear-gradient(135deg, #a00000, #600000);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.5);
+    background: linear-gradient(135deg, #aa0000, #ee0000, #aa0000);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 6px 30px rgba(255, 215, 0, 0.7), 0 0 40px rgba(255, 100, 0, 0.3);
   }
+
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+
   &:disabled {
-    background: #444;
-    color: #888;
-    border-color: #666;
+    background: #333;
+    color: #666;
+    border-color: #555;
     cursor: not-allowed;
+    text-shadow: none;
+    box-shadow: none;
   }
+`;
+
+const ButtonIcon = styled.span`
+  font-size: 1.2em;
+  margin-right: 4px;
+  vertical-align: middle;
+`;
+
+const DamageLabel = styled.span`
+  display: block;
+  font-size: 0.7em;
+  opacity: 0.8;
+  margin-top: 4px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+`;
+
+const ChargeBar = styled.div`
+  display: block;
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 3px;
+  margin-top: 6px;
+  position: relative;
+  overflow: hidden;
+`;
+
+const ChargeFill = styled.div<{ $progress: number }>`
+  height: 100%;
+  width: ${props => Math.min(props.$progress * 100, 100)}%;
+  background: linear-gradient(90deg, #ffd700, #ff8c00);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+`;
+
+const ChargeText = styled.span`
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.55em;
+  color: #ddd;
+  text-shadow: 0 0 3px rgba(0,0,0,0.8);
 `;
 
 interface OptionButtonProps {
@@ -842,42 +977,77 @@ interface OptionButtonProps {
 }
 
 const OptionButton = styled.button<OptionButtonProps>`
-  background-color: ${(props) => (props.selected ? '#6a5acd' : '#dcdcdc')};
-  color: ${(props) => (props.selected ? '#f0f8ff' : '#333')};
-  border: 2px solid ${(props) => (props.selected ? '#483d8b' : '#a0522d')};
+  background: ${(props) => (props.selected
+    ? 'linear-gradient(135deg, rgba(139, 0, 0, 0.8), rgba(180, 30, 30, 0.7))'
+    : 'linear-gradient(135deg, rgba(40, 25, 15, 0.8), rgba(60, 35, 20, 0.7))')};
+  color: ${(props) => (props.selected ? '#ffd700' : '#e8d5b5')};
+  border: 2px solid ${(props) => (props.selected ? '#ffd700' : 'rgba(255, 215, 0, 0.2)')};
   border-radius: 10px;
   padding: 12px 20px;
   font-family: 'Verdana', sans-serif;
   font-size: 1.15em;
   cursor: pointer;
   transition: all 0.3s ease;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
   &:hover:not(:disabled) {
-    background-color: ${(props) => (props.selected ? '#483d8b' : '#b0c4de')};
-    color: ${(props) => (props.selected ? '#f0f8ff' : '#333')};
+    background: ${(props) => (props.selected
+      ? 'linear-gradient(135deg, rgba(160, 10, 10, 0.9), rgba(200, 40, 40, 0.8))'
+      : 'linear-gradient(135deg, rgba(60, 35, 20, 0.9), rgba(80, 45, 25, 0.8))')};
+    border-color: rgba(255, 215, 0, 0.5);
     transform: translateY(-2px);
-    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4), 0 0 8px rgba(255, 215, 0, 0.2);
   }
   &:disabled { cursor: not-allowed; opacity: 0.6; }
 `;
 
 const SubmitButton = styled.button`
-  background-color: #8b4513;
+  background: linear-gradient(135deg, #8b4513, #c0701f, #8b4513);
+  background-size: 200% 100%;
   color: #f5f5dc;
-  border: 2px solid #6b3410;
-  border-radius: 10px;
-  padding: 16px 40px;
+  border: 2px solid #ffd700;
+  border-radius: 12px;
+  padding: 16px 45px;
   font-family: 'Cinzel Decorative', cursive;
   font-size: 1.3em;
   font-weight: bold;
   letter-spacing: 1px;
   cursor: pointer;
-  transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
-  &:hover:not(:disabled) {
-    background-color: #a0522d;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
+  animation: ${pulseGlow} 3s ease-in-out infinite;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.15), transparent);
+    animation: ${shimmer} 4s ease-in-out infinite;
   }
-  &:disabled { cursor: not-allowed; opacity: 0.6; }
+
+  &:hover:not(:disabled) {
+    background-position: 100% center;
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 6px 25px rgba(255, 215, 0, 0.5), 0 0 15px rgba(139, 69, 19, 0.3);
+    border-color: #fff;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+    box-shadow: 0 2px 8px rgba(139, 69, 19, 0.4);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    filter: grayscale(0.4);
+    animation: none;
+    box-shadow: none;
+  }
 `;
 
 const FeedbackText = styled.p`
@@ -885,8 +1055,34 @@ const FeedbackText = styled.p`
   font-family: 'Georgia', serif;
   font-size: 1.3em;
   font-weight: bold;
-  color: #ff4500;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+  color: #ffd700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.4), 1px 1px 2px rgba(0, 0, 0, 0.7);
+`;
+
+const ImagePane = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 15px;
+  gap: 10px;
+`;
+
+const ImageToggle = styled.button`
+  background: linear-gradient(135deg, rgba(40, 25, 15, 0.8), rgba(60, 35, 20, 0.7));
+  color: #ffd700;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-family: 'Verdana', sans-serif;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(60, 35, 20, 0.9), rgba(80, 45, 25, 0.8));
+    border-color: rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+  }
 `;
 
 const QuestionImage = styled.img`
@@ -895,7 +1091,8 @@ const QuestionImage = styled.img`
   object-fit: contain;
   margin-top: 15px;
   border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 215, 0, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
 `;
 
 export default CombatScreen;

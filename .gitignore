@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+
+# Build output
+tulu-titans-web/build/
+
+# Database files
+*.db
+
+# Generated SQL scripts
+sentence_fix_batch*.sql
+sentence_fixes_all.sql
+sentence_updates.sql
+image_fix.sql
+image_fix_all.sql
+vocabulary_export.sql
+
+# Generated JSON data
+extracted_vocabulary_data_prompts.json
+final_extracted_vocabulary*.json
+
+# Scraped HTML content
+easytulu_child_pages/
+
+# Scraped/downloaded images
+easytulu_vocab_images/
+vocabulary_images/
+images/
+
+# Text data exports
+all_sentences.txt
+vocabulary.html
+
+# Windows artifacts
+nul
+Thumbs.db
+
+# OS files
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+.dev.vars*
+
+# Wrangler state
+.wrangler/
+
+# Claude Code project files
+.claude/
+
+# Old local Express server
+tulu-titans-web/server/
+
+# IDE
+.vscode/
+
+# Python utility scripts
+*.py
+
+# PowerShell scripts
+*.ps1
+
+# Image download script
+tulu-titans-web/download_images.js
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*

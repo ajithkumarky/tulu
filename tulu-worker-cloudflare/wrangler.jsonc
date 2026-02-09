@@ -1,0 +1,25 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "tulu-worker-cloudflare",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-02-05",
+	"observability": {
+		"enabled": true
+	},
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"d1_databases": [
+	  {
+		"binding": "DB",
+		"database_name": "tulu-vocabulary-db",
+		"database_id": "58c96c4b-eccb-46eb-9416-26f99ae575f5"
+	  }
+	],
+	"assets": {
+	  "directory": "../tulu-titans-web/build",
+	  "binding": "ASSETS",
+	  "not_found_handling": "single-page-application"
+	},
+	"workers_dev": true
+}
